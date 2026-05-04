@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 import time
 
 from data.stream_simulator import StreamSimulator
@@ -15,7 +15,6 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Initialize components
 simulator = StreamSimulator(pattern='random_walk')
 encoder = StateEncoder(window_size=20)
 geometry = GeometryEngine()
@@ -35,37 +34,28 @@ def root():
     }
 
 @app.post("/ingest")
-def ingest_data(data: DataPoint):
-    """Ingest a single data point"""
+def ingest_data( DataPoint):
     timestamp = data.timestamp or time.time()
-    
-    # Process through pipeline
     encoder.add_observation(data.value, timestamp)
     drift.add_observation(data.value)
-    
     return {
         "status": "ingested",
         "value": data.value,
         "timestamp": timestamp
     }
+
 @app.get("/state")
 def get_state():
-    """Get current encoded state"""
     state = encoder.encode()
     return state
-
 @app.get("/geometry")
 def get_geometry():
-    """Get geometric analysis"""
-    # Update geometry with current state
     current_state = encoder.encode()
     geometry.add_state(current_state)
-    
     return geometry.get_geometry_summary()
 
 @app.get("/drift")
 def get_drift():
-    """Get drift detection metrics"""
     return {
         "drift_score": drift.compute_drift_score(),
         "is_drifting": drift.is_drifting(),
@@ -74,32 +64,24 @@ def get_drift():
 
 @app.get("/action")
 def get_action():
-    """Get recommended action based on current geometry"""
-    # Update all components
     current_state = encoder.encode()
     geometry.add_state(current_state)
     drift_score = drift.compute_drift_score()
-    
-    # Get geometry summary
     geom_summary = geometry.get_geometry_summary()
-    
-    # Decide
     recommendation = action_engine.decide(
         geometry=geom_summary,
         drift_score=drift_score,
         state=current_state
     )
-    
     return recommendation
 
 @app.get("/simulate/{n}")
 def simulate_stream(n: int = 10):
-    """Simulate n data points and return final state"""
     for _ in range(n):
-        data = simulator.generate()        encoder.add_observation(data['value'], data['timestamp'])
+        data = simulator.generate()
+        encoder.add_observation(data['value'], data['timestamp'])
         drift.add_observation(data['value'])
     
-    # Get final analysis
     state = encoder.encode()
     geometry.add_state(state)
     geom_summary = geometry.get_geometry_summary()
@@ -114,13 +96,7 @@ def simulate_stream(n: int = 10):
         "action": action
     }
 
-@app.post("/reset")
-def reset_system():
-    """Reset all components"""
+@app.post("/reset")def reset_system():
     encoder.reset()
     simulator.reset()
     return {"status": "reset complete"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
